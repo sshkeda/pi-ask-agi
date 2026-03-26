@@ -1,0 +1,308 @@
+/**
+ * Telegram delivery channel.
+ *
+ * Sends the compiled prompt via Telegram bot, waits for
+ * the user to reply with the frontier model's response.
+ *
+ * Env vars: ASK_AGI_TELEGRAM_BOT_TOKEN, ASK_AGI_TELEGRAM_CHAT_ID
+ */
+
+export interface TelegramConfig {
+  botToken: string;
+  chatId: string;
+}
+
+interface TelegramChat {
+  id: number | string;
+}
+
+interface TelegramDocument {
+  file_id: string;
+}
+
+interface TelegramReplyToMessage {
+  message_id: number;
+}
+
+interface TelegramMessage {
+  message_id: number;
+  chat: TelegramChat;
+  text?: string;
+  caption?: string;
+  document?: TelegramDocument;
+  reply_to_message?: TelegramReplyToMessage;
+}
+
+interface TelegramUpdate {
+  update_id: number;
+  message?: TelegramMessage;
+}
+
+type Listener = (message: TelegramMessage) => void | Promise<void>;
+
+interface TelegramDispatcher {
+  config: TelegramConfig;
+  offset: number;
+  listeners: Set<Listener>;
+  polling: boolean;
+}
+
+export function getTelegramConfig(): TelegramConfig | null {
+  const botToken = process.env.ASK_AGI_TELEGRAM_BOT_TOKEN;
+  const chatId = process.env.ASK_AGI_TELEGRAM_CHAT_ID;
+  if (!botToken || !chatId) return null;
+  return { botToken, chatId };
+}
+
+const API = (token: string) => `https://api.telegram.org/bot${token}`;
+const FILE_API = (token: string, filePath: string) => `https://api.telegram.org/file/bot${token}/${filePath}`;
+const MAX_TEXT_MESSAGE = 4000;
+const ATTACHMENT_CAPTION =
+  "🧠 ask-agi prompt attached. Paste it into the frontier model, then reply directly to this file with the response.";
+const dispatchers = new Map<string, TelegramDispatcher>();
+
+/**
+ * Send a prompt delivery.
+ * - Short prompts go as a single Telegram text message with the header prepended.
+ * - Long prompts send the header as a separate text message, and the attachment contains ONLY the raw prompt.
+ */
+export async function sendMessage(
+  config: TelegramConfig,
+  prompt: string,
+  header?: string,
+): Promise<number | null> {
+  const trimmedHeader = header?.trim();
+
+  if (prompt.length <= MAX_TEXT_MESSAGE) {
+    const text = trimmedHeader ? `${trimmedHeader}\n\n${prompt}` : prompt;
+    return await sendTextMessage(config, text);
+  }
+
+  if (trimmedHeader) {
+    await sendTextMessage(config, trimmedHeader);
+  }
+  return await sendTextAttachment(config, prompt);
+}
+
+async function sendTextMessage(
+  config: TelegramConfig,
+  text: string,
+): Promise<number | null> {
+  const resp = await fetch(`${API(config.botToken)}/sendMessage`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chat_id: config.chatId, text }),
+  });
+
+  if (!resp.ok) return null;
+  const data = await readJson(resp);
+  return getNestedNumber(data, ["result", "message_id"]);
+}
+
+async function sendTextAttachment(
+  config: TelegramConfig,
+  text: string,
+): Promise<number | null> {
+  const form = new FormData();
+  form.set("chat_id", config.chatId);
+  form.set("caption", ATTACHMENT_CAPTION);
+  form.set(
+    "document",
+    new Blob([text], { type: "text/plain;charset=utf-8" }),
+    `ask-agi-${Date.now()}.txt`,
+  );
+
+  const resp = await fetch(`${API(config.botToken)}/sendDocument`, {
+    method: "POST",
+    body: form,
+  });
+
+  if (!resp.ok) return null;
+  const data = await readJson(resp);
+  return getNestedNumber(data, ["result", "message_id"]);
+}
+
+/**
+ * Long-poll for the user's reply to a specific Telegram message.
+ *
+ * No automatic timeout: this workflow is human-mediated and may take hours.
+ * The request only stops if the signal is aborted.
+ *
+ * To avoid cross-talk between multiple ask-agi requests, a single shared
+ * getUpdates loop fans out messages to per-request listeners. Replies must be
+ * explicit Telegram replies to the original prompt message/file.
+ */
+export async function waitForReply(
+  config: TelegramConfig,
+  afterMessageId: number,
+  signal?: AbortSignal,
+): Promise<string | null> {
+  const dispatcher = getDispatcher(config);
+  startPolling(dispatcher);
+
+  return await new Promise((resolve) => {
+    let settled = false;
+
+    const cleanup = (result: string | null): void => {
+      if (settled) return;
+      settled = true;
+      dispatcher.listeners.delete(listener);
+      resolve(result);
+    };
+
+    if (signal?.aborted) {
+      cleanup(null);
+      return;
+    }
+
+    const onAbort = (): void => cleanup(null);
+    signal?.addEventListener("abort", onAbort, { once: true });
+
+    const finish = (result: string | null): void => {
+      signal?.removeEventListener("abort", onAbort);
+      cleanup(result);
+    };
+
+    const listener: Listener = async (message) => {
+      if (settled) return;
+      if (String(message.chat.id) !== config.chatId) return;
+      if (message.reply_to_message?.message_id !== afterMessageId) return;
+
+      if (message.text?.trim()) {
+        finish(message.text.trim());
+        return;
+      }
+
+      if (message.document?.file_id) {
+        const text = await downloadDocumentText(config, message.document.file_id);
+        if (text?.trim()) {
+          finish(text.trim());
+        }
+      }
+    };
+
+    dispatcher.listeners.add(listener);
+  });
+}
+
+function getDispatcher(config: TelegramConfig): TelegramDispatcher {
+  const key = `${config.botToken}:${config.chatId}`;
+  const existing = dispatchers.get(key);
+  if (existing) return existing;
+
+  const created: TelegramDispatcher = {
+    config,
+    offset: 0,
+    listeners: new Set(),
+    polling: false,
+  };
+  dispatchers.set(key, created);
+  return created;
+}
+
+function startPolling(dispatcher: TelegramDispatcher): void {
+  if (dispatcher.polling) return;
+  dispatcher.polling = true;
+
+  void (async () => {
+    while (dispatcher.polling) {
+      try {
+        const resp = await fetch(
+          `${API(dispatcher.config.botToken)}/getUpdates?offset=${dispatcher.offset}&timeout=30&allowed_updates=["message"]`,
+        );
+        if (!resp.ok) {
+          await sleep(5000);
+          continue;
+        }
+
+        const data = await readJson(resp);
+        const updates = getUpdates(data);
+        for (const update of updates) {
+          dispatcher.offset = Math.max(dispatcher.offset, update.update_id + 1);
+          if (!update.message) continue;
+
+          const listeners = [...dispatcher.listeners];
+          for (const listener of listeners) {
+            try {
+              await listener(update.message);
+            } catch (error) {
+              console.error("ask-agi Telegram listener failed:", error);
+            }
+          }
+        }
+      } catch (error) {
+        console.error("ask-agi Telegram polling failed:", error);
+        await sleep(5000);
+      }
+    }
+  })();
+}
+
+async function downloadDocumentText(
+  config: TelegramConfig,
+  fileId: string,
+): Promise<string | null> {
+  const fileInfoResp = await fetch(`${API(config.botToken)}/getFile?file_id=${encodeURIComponent(fileId)}`);
+  if (!fileInfoResp.ok) return null;
+
+  const fileInfo = await readJson(fileInfoResp);
+  const filePath = getNestedString(fileInfo, ["result", "file_path"]);
+  if (!filePath) return null;
+
+  const fileResp = await fetch(FILE_API(config.botToken, filePath));
+  if (!fileResp.ok) return null;
+  return await fileResp.text();
+}
+
+function getUpdates(value: unknown): TelegramUpdate[] {
+  if (!isRecord(value)) return [];
+  const result = value.result;
+  if (!Array.isArray(result)) return [];
+
+  const updates: TelegramUpdate[] = [];
+  for (const item of result) {
+    if (!isRecord(item)) continue;
+    const updateId = item.update_id;
+    const message = item.message;
+    if (typeof updateId !== "number") continue;
+    updates.push({
+      update_id: updateId,
+      message: isTelegramMessage(message) ? message : undefined,
+    });
+  }
+  return updates;
+}
+
+function isTelegramMessage(value: unknown): value is TelegramMessage {
+  if (!isRecord(value)) return false;
+  return typeof value.message_id === "number" && isRecord(value.chat) && (typeof value.chat.id === "number" || typeof value.chat.id === "string");
+}
+
+function getNestedNumber(value: unknown, path: string[]): number | null {
+  const result = getNested(value, path);
+  return typeof result === "number" ? result : null;
+}
+
+function getNestedString(value: unknown, path: string[]): string | null {
+  const result = getNested(value, path);
+  return typeof result === "string" ? result : null;
+}
+
+function getNested(value: unknown, path: string[]): unknown {
+  let current: unknown = value;
+  for (const key of path) {
+    if (!isRecord(current) || !(key in current)) return null;
+    current = current[key];
+  }
+  return current;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+async function readJson(response: Response): Promise<unknown> {
+  return await response.json();
+}
+
+function sleep(ms: number) { return new Promise((r) => setTimeout(r, ms)); }

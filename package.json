@@ -1,0 +1,27 @@
+{
+  "name": "ask-agi",
+  "version": "1.0.0",
+  "description": "Human-as-API for frontier models — compile prompts, deliver via Telegram, inject replies back into Pi",
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sshkeda/ask-agi.git"
+  },
+  "pi": {
+    "extensions": ["./extensions/ask-agi/index.ts"],
+    "skills": ["./skills/ask-agi"]
+  },
+  "scripts": {
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@mariozechner/pi-coding-agent": "*",
+    "@mariozechner/pi-tui": "*",
+    "@mariozechner/pi-ai": "*",
+    "@sinclair/typebox": "*"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
+}
