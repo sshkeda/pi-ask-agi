@@ -9,19 +9,25 @@
     "url": "https://github.com/sshkeda/ask-agi.git"
   },
   "pi": {
-    "extensions": ["./extensions/ask-agi/index.ts"],
-    "skills": ["./skills/ask-agi"]
+    "extensions": [
+      "./extensions/ask-agi/index.ts"
+    ],
+    "skills": [
+      "./skills/ask-agi"
+    ]
   },
   "scripts": {
-    "check": "tsc --noEmit"
+    "check": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
+    "@mariozechner/pi-ai": "*",
     "@mariozechner/pi-coding-agent": "*",
     "@mariozechner/pi-tui": "*",
-    "@mariozechner/pi-ai": "*",
     "@sinclair/typebox": "*"
   },
   "devDependencies": {
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.2"
   }
 }
