@@ -57,8 +57,9 @@ export function getTelegramConfig(): TelegramConfig | null {
   return { botToken, chatId };
 }
 
-const API = (token: string) => `https://api.telegram.org/bot${token}`;
-const FILE_API = (token: string, filePath: string) => `https://api.telegram.org/file/bot${token}/${filePath}`;
+const baseUrl = () => process.env.__ASK_AGI_TELEGRAM_BASE_URL || "https://api.telegram.org";
+const API = (token: string) => `${baseUrl()}/bot${token}`;
+const FILE_API = (token: string, filePath: string) => `${baseUrl()}/file/bot${token}/${filePath}`;
 // Generation counter — bumped on every module load (including /reload).
 // Old polling loops detect the mismatch and exit, preventing
 // two loops from competing for getUpdates on the same bot.
