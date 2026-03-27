@@ -183,7 +183,7 @@ function getDispatcher(config: TelegramConfig): TelegramDispatcher {
 function isTransientNetworkError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   const msg = error.message + (error.cause instanceof Error ? " " + error.cause.message : "");
-  return /ETIMEDOUT|ENOTFOUND|ECONNRESET|ECONNREFUSED|ENETUNREACH|EAI_AGAIN|fetch failed|network|socket hang up/i.test(msg);
+  return /ETIMEDOUT|ENOTFOUND|ECONNRESET|ECONNREFUSED|ENETUNREACH|EAI_AGAIN|fetch failed|network|socket hang up|TimeoutError|AbortError/i.test(msg);
 }
 
 const BASE_RETRY_MS = 2_000;
@@ -200,6 +200,7 @@ function startPolling(dispatcher: TelegramDispatcher): void {
       try {
         const resp = await fetch(
           `${API(dispatcher.config.botToken)}/getUpdates?offset=${dispatcher.offset}&timeout=30&allowed_updates=["message"]`,
+          { signal: AbortSignal.timeout(35_000) },
         );
         if (!resp.ok) {
           if (resp.status === 401 || resp.status === 403) {
