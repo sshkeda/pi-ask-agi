@@ -238,6 +238,13 @@ function startPolling(dispatcher: TelegramDispatcher): void {
             }
           }
         }
+
+        // Stop polling when no one is listening — avoids wasting API quota.
+        // A new waitForReply() call will restart it.
+        if (dispatcher.listeners.size === 0) {
+          dispatcher.polling = false;
+          break;
+        }
       } catch (error) {
         consecutiveErrors++;
         const delay = Math.min(BASE_RETRY_MS * 2 ** (consecutiveErrors - 1), MAX_RETRY_MS);
