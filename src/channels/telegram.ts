@@ -202,6 +202,11 @@ function startPolling(dispatcher: TelegramDispatcher): void {
           `${API(dispatcher.config.botToken)}/getUpdates?offset=${dispatcher.offset}&timeout=30&allowed_updates=["message"]`,
         );
         if (!resp.ok) {
+          if (resp.status === 401 || resp.status === 403) {
+            console.error(`ask-agi Telegram polling: HTTP ${resp.status} — bad bot token, stopping`);
+            dispatcher.polling = false;
+            break;
+          }
           consecutiveErrors++;
           const delay = Math.min(BASE_RETRY_MS * 2 ** (consecutiveErrors - 1), MAX_RETRY_MS);
           console.error(`ask-agi Telegram polling HTTP ${resp.status}, retrying in ${Math.round(delay / 1000)}s`);
