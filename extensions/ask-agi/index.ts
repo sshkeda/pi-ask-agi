@@ -68,7 +68,6 @@ function refreshWidget(ctx: ExtensionContext | ExtensionCommandContext): void {
 
 function queueFrontierResponse(
   pi: ExtensionAPI,
-  ctx: ExtensionContext | ExtensionCommandContext,
   request: PendingRequest,
   response: string,
 ): void {
@@ -80,45 +79,32 @@ function queueFrontierResponse(
     `Use this to continue the task.`,
   ].filter(Boolean).join("\n\n");
 
-  if (ctx.isIdle()) {
-    pi.sendUserMessage(content);
-  } else {
-    pi.sendUserMessage(content, { deliverAs: "followUp" });
-    ctx.ui.notify(`Queued frontier response for ${request.id} as follow-up.`, "info");
-  }
+  // Always deliver as followUp — the reply arrives long after execute() returns,
+  // so the original ctx is stale. pi (ExtensionAPI) is the only safe long-lived handle.
+  pi.sendUserMessage(content, { deliverAs: "followUp" });
 }
 
-async function startTelegramFlow(pi: ExtensionAPI, ctx: ExtensionContext, request: PendingRequest): Promise<void> {
+async function startTelegramFlow(pi: ExtensionAPI, request: PendingRequest): Promise<void> {
   try {
     const telegramConfig = getTelegramConfig();
     if (!telegramConfig) throw new Error("Telegram is not configured.");
 
     const sending = markRequest(request, { status: "sending" });
-    refreshWidget(ctx);
 
-    const header = [
-      `🧠 ask-agi → ${sending.model.name}`,
-      `Request: ${sending.id}`,
-      `Paste the prompt into ${sending.model.name}.`,
-      `Then reply directly to the prompt message/file in this chat with the model's response.`,
-    ].join("\n");
+    const caption = `🧠 ask-agi → ${sending.model.name} (${sending.id})\nPaste into ${sending.model.name}, then reply to this message with the response.`;
 
-    const messageId = await sendTelegram(telegramConfig, sending.prompt, header);
+    const messageId = await sendTelegram(telegramConfig, sending.prompt, caption);
     if (!messageId) throw new Error("Failed to send Telegram message.");
 
-    const waiting = markRequest(sending, { status: "waiting_response" });
-    refreshWidget(ctx);
-    ctx.ui.notify(`ask-agi ${waiting.id} sent to Telegram.`, "info");
+    markRequest(sending, { status: "waiting_response" });
 
     const reply = await waitTelegram(telegramConfig, messageId);
     if (!reply) {
-      markRequest(waiting, { status: "cancelled", error: "No Telegram reply received." });
-      refreshWidget(ctx);
-      ctx.ui.notify(`ask-agi ${waiting.id} cancelled: no Telegram reply.`, "warning");
+      markRequest(request, { status: "cancelled", error: "No Telegram reply received." });
       return;
     }
 
-    const done = markRequest(waiting, { status: "completed" });
+    const done = markRequest(request, { status: "completed" });
     pi.appendEntry("ask-agi-result", {
       requestId: done.id,
       targetModel: done.model.id,
@@ -127,14 +113,10 @@ async function startTelegramFlow(pi: ExtensionAPI, ctx: ExtensionContext, reques
       response: reply,
       timestamp: Date.now(),
     });
-    refreshWidget(ctx);
-    queueFrontierResponse(pi, ctx, done, reply);
-    ctx.ui.notify(`ask-agi ${done.id} reply received from Telegram.`, "info");
+    queueFrontierResponse(pi, done, reply);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     markRequest(request, { status: "error", error: message });
-    refreshWidget(ctx);
-    ctx.ui.notify(`ask-agi ${request.id} failed: ${message}`, "error");
   }
 }
 
@@ -228,10 +210,9 @@ export default function (pi: ExtensionAPI) {
         updatedAt: Date.now(),
       };
       requests.set(requestId, request);
-      refreshWidget(ctx);
 
       try {
-        void startTelegramFlow(pi, ctx, request);
+        void startTelegramFlow(pi, request);
 
         return {
           content: [{

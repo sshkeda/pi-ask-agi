@@ -60,44 +60,25 @@ const dispatchers = new Map<string, TelegramDispatcher>();
 
 /**
  * Send a prompt delivery.
- * Always sends the prompt as a .txt file attachment so it's easy to
- * copy-paste into any frontier model UI. The header goes as a
- * separate text message before the file.
+ * Always a single .txt file attachment with the caption as instructions.
+ * One message = one thing to reply to. No confusion.
  */
 export async function sendMessage(
   config: TelegramConfig,
   prompt: string,
-  header?: string,
+  caption?: string,
 ): Promise<number | null> {
-  const trimmedHeader = header?.trim();
-  if (trimmedHeader) {
-    await sendTextMessage(config, trimmedHeader);
-  }
-  return await sendTextAttachment(config, prompt);
-}
-
-async function sendTextMessage(
-  config: TelegramConfig,
-  text: string,
-): Promise<number | null> {
-  const resp = await fetch(`${API(config.botToken)}/sendMessage`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ chat_id: config.chatId, text }),
-  });
-
-  if (!resp.ok) return null;
-  const data = await readJson(resp);
-  return getNestedNumber(data, ["result", "message_id"]);
+  return await sendTextAttachment(config, prompt, caption);
 }
 
 async function sendTextAttachment(
   config: TelegramConfig,
   text: string,
+  caption?: string,
 ): Promise<number | null> {
   const form = new FormData();
   form.set("chat_id", config.chatId);
-  form.set("caption", "🧠 ask-agi prompt. Paste into the frontier model, then reply to this file with the response.");
+  form.set("caption", caption || "🧠 ask-agi prompt. Reply to this message with the response.");
   form.set(
     "document",
     new Blob([text], { type: "text/plain;charset=utf-8" }),
