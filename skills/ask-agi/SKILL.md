@@ -1,11 +1,11 @@
 ---
 name: ask-agi
 description: >
-  Escalate hard problems to frontier models (GPT-5.4, Claude, etc.) through the
-  user as middleware. You compile the paste-ready prompt yourself, ask_agi delivers
-  it via Telegram, and injects the frontier reply back into Pi later.
-  Triggers on: "ask agi", "escalate", "ask gpt", "ask claude", "frontier model".
-version: 1.1.0
+  Escalate hard problems to GPT-5-4 Pro through the user as middleware.
+  You compile the paste-ready prompt yourself (following the official prompting
+  guide), ask_agi delivers it via Telegram, and injects the reply back into Pi.
+  Triggers on: "ask agi", "escalate", "ask gpt", "frontier model".
+version: 1.2.0
 license: MIT
 ---
 
@@ -15,18 +15,19 @@ Use `ask_agi` when escalation to a stronger model would materially help.
 
 ## How to call it
 
-You are the prompt compiler. Write the full, paste-ready prompt yourself and pass it as `prompt`:
+You are the prompt compiler. Before calling ask_agi:
 
-1. Include all relevant files, code, errors, constraints, and goals in the prompt
-2. The frontier model has ZERO access to this Pi session — include everything it needs
-3. Call `ask_agi` with the compiled `prompt`
-4. ask_agi sends it to Telegram and injects the reply back when it arrives
+1. **Fetch the prompting guide** at `https://developers.openai.com/docs/guides/prompt-guidance.md` using `fetch_page`
+2. **Write the full, paste-ready prompt** following the guide's best practices
+3. The frontier model has ZERO access to this Pi session — include all relevant files, code, errors, constraints, and goals
+4. Call `ask_agi` with the compiled `prompt`
+5. ask_agi sends it as a `.txt` file to Telegram and injects the reply back when it arrives
 
 ## Parameters
 
-- `prompt` (required): The full, paste-ready prompt for the frontier model
+- `prompt` (required): The full, paste-ready prompt for GPT-5-4 Pro
 - `question` (optional): Short summary for display/tracking in the widget
-- `target_model` (optional): Model ID. Default: `gpt-5.4`. Configured in `~/.ask-agi/config.json`
+- `target_model` (optional): Default: `gpt-5-4-pro`
 - `channel` (optional): `telegram` | `auto`
 
 ## When to use it

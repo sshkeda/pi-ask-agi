@@ -164,10 +164,10 @@ export default function (pi: ExtensionAPI) {
     promptSnippet:
       "Escalate hard problems with ask_agi. You compile the full paste-ready prompt yourself, then pass it to ask_agi for Telegram delivery.",
     promptGuidelines: [
-      `Available frontier models: ${modelIds.join(", ")}. Default: ${defaultModel.id}.`,
-      "YOU are the prompt compiler. Write the full, paste-ready prompt yourself and pass it as the `prompt` parameter.",
+      `Target model: ${defaultModel.name}. Prompting guide: ${defaultModel.guideUrl}`,
+      "YOU are the prompt compiler. Before calling ask_agi, fetch the prompting guide above with fetch_page, then write a prompt that follows it.",
       "The frontier model has ZERO access to this Pi session, files, tools, or hidden context. Include everything it needs in the prompt.",
-      "ask_agi is a pure delivery mechanism — it sends your prompt to Telegram and injects the reply back later.",
+      "ask_agi is a pure delivery mechanism — it sends your prompt as a .txt file to Telegram and injects the reply back later.",
       "Include a short `question` for display/tracking purposes (shown in the widget and logs).",
     ],
     parameters: Type.Object({

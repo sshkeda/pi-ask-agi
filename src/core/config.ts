@@ -1,9 +1,8 @@
 /**
- * Configuration — user-customizable model registry.
+ * Configuration — model registry.
  *
  * Each model has a name and a URL to its official prompting guide.
  * The agent fetches the guide fresh each time to stay up-to-date.
- * Default: GPT-5.4.
  */
 
 import * as fs from "node:fs";
@@ -25,17 +24,12 @@ const CONFIG_DIR = path.join(os.homedir(), ".ask-agi");
 const CONFIG_PATH = path.join(CONFIG_DIR, "config.json");
 
 const DEFAULT_CONFIG: Config = {
-  defaultModel: "gpt-5.4",
+  defaultModel: "gpt-5-4-pro",
   models: [
     {
-      id: "gpt-5.4",
-      name: "GPT-5.4",
+      id: "gpt-5-4-pro",
+      name: "GPT-5-4 Pro",
       guideUrl: "https://developers.openai.com/docs/guides/prompt-guidance.md",
-    },
-    {
-      id: "claude",
-      name: "Claude",
-      guideUrl: "https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/claude-prompting-best-practices.md",
     },
   ],
 };
