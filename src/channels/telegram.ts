@@ -135,7 +135,8 @@ export async function waitForReply(
     };
 
     if (signal?.aborted) {
-      cleanup(null);
+      settled = true;
+      resolve(null);
       return;
     }
 
