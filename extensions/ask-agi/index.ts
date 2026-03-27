@@ -79,9 +79,9 @@ function queueFrontierResponse(
     `Use this to continue the task.`,
   ].filter(Boolean).join("\n\n");
 
-  // Always deliver as followUp — the reply arrives long after execute() returns,
-  // so the original ctx is stale. pi (ExtensionAPI) is the only safe long-lived handle.
-  pi.sendUserMessage(content, { deliverAs: "followUp" });
+  // No deliverAs — sendUserMessage "always triggers a turn".
+  // followUp requires an active turn to follow, which may not exist if Pi is idle.
+  pi.sendUserMessage(content);
 }
 
 async function startTelegramFlow(pi: ExtensionAPI, request: PendingRequest): Promise<void> {
