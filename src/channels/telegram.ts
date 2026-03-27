@@ -215,8 +215,8 @@ function startPolling(dispatcher: TelegramDispatcher): void {
           continue;
         }
 
-        consecutiveErrors = 0;
         const data = await readJson(resp);
+        consecutiveErrors = 0;
         const updates = getUpdates(data);
         for (const update of updates) {
           dispatcher.offset = Math.max(dispatcher.offset, update.update_id + 1);
