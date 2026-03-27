@@ -360,3 +360,14 @@ async function readJson(response: Response): Promise<unknown> {
 }
 
 function sleep(ms: number) { return new Promise((r) => setTimeout(r, ms)); }
+
+/** @internal — test helper to reset all dispatcher state between tests. */
+export function __resetDispatchers(): void {
+  for (const d of dispatchers.values()) {
+    d.polling = false;
+    for (const cb of [...d.onPollingDead]) cb();
+    d.onPollingDead.clear();
+    d.listeners.clear();
+  }
+  dispatchers.clear();
+}
