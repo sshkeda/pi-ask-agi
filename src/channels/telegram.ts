@@ -180,21 +180,36 @@ function getDispatcher(config: TelegramConfig): TelegramDispatcher {
   return created;
 }
 
+function isTransientNetworkError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const msg = error.message + (error.cause instanceof Error ? " " + error.cause.message : "");
+  return /ETIMEDOUT|ENOTFOUND|ECONNRESET|ECONNREFUSED|ENETUNREACH|EAI_AGAIN|fetch failed|network|socket hang up/i.test(msg);
+}
+
+const BASE_RETRY_MS = 2_000;
+const MAX_RETRY_MS = 60_000;
+
 function startPolling(dispatcher: TelegramDispatcher): void {
   if (dispatcher.polling) return;
   dispatcher.polling = true;
 
   void (async () => {
+    let consecutiveErrors = 0;
+
     while (dispatcher.polling && (globalThis as any)[GEN_KEY] === currentGeneration) {
       try {
         const resp = await fetch(
           `${API(dispatcher.config.botToken)}/getUpdates?offset=${dispatcher.offset}&timeout=30&allowed_updates=["message"]`,
         );
         if (!resp.ok) {
-          await sleep(5000);
+          consecutiveErrors++;
+          const delay = Math.min(BASE_RETRY_MS * 2 ** (consecutiveErrors - 1), MAX_RETRY_MS);
+          console.error(`ask-agi Telegram polling HTTP ${resp.status}, retrying in ${Math.round(delay / 1000)}s`);
+          await sleep(delay);
           continue;
         }
 
+        consecutiveErrors = 0;
         const data = await readJson(resp);
         const updates = getUpdates(data);
         for (const update of updates) {
@@ -211,8 +226,17 @@ function startPolling(dispatcher: TelegramDispatcher): void {
           }
         }
       } catch (error) {
-        console.error("ask-agi Telegram polling failed:", error);
-        await sleep(5000);
+        consecutiveErrors++;
+        const delay = Math.min(BASE_RETRY_MS * 2 ** (consecutiveErrors - 1), MAX_RETRY_MS);
+
+        if (isTransientNetworkError(error)) {
+          const cause = error instanceof Error && error.cause instanceof Error ? (error.cause as any).code || error.cause.message : "";
+          console.error(`ask-agi Telegram polling: network error${cause ? ` (${cause})` : ""}, retrying in ${Math.round(delay / 1000)}s (attempt ${consecutiveErrors})`);
+        } else {
+          console.error("ask-agi Telegram polling failed:", error);
+        }
+
+        await sleep(delay);
       }
     }
   })();
