@@ -2,10 +2,10 @@
 name: ask-agi
 description: >
   Escalate hard problems to frontier models (GPT-5.4, Claude, etc.) through the
-  user as middleware. ask_agi fetches the official prompting guide, compiles a
-  paste-ready prompt, shows native Pi review UI, and collects the pasted response.
+  user as middleware. You compile the paste-ready prompt yourself, ask_agi delivers
+  it via Telegram, and injects the frontier reply back into Pi later.
   Triggers on: "ask agi", "escalate", "ask gpt", "ask claude", "frontier model".
-version: 1.0.0
+version: 1.1.0
 license: MIT
 ---
 
@@ -15,23 +15,19 @@ Use `ask_agi` when escalation to a stronger model would materially help.
 
 ## How to call it
 
-Prefer passing `question` + `context`. ask_agi handles the rest:
+You are the prompt compiler. Write the full, paste-ready prompt yourself and pass it as `prompt`:
 
-- fetches the target model's official prompting guide
-- compiles the prompt using the current Pi model
-- sends it to Telegram
-- injects the frontier reply back into Pi when it arrives
+1. Include all relevant files, code, errors, constraints, and goals in the prompt
+2. The frontier model has ZERO access to this Pi session — include everything it needs
+3. Call `ask_agi` with the compiled `prompt`
+4. ask_agi sends it to Telegram and injects the reply back when it arrives
 
 ## Parameters
 
-- `question` (required*): The core question for the frontier model
-- `context` (optional): All relevant context the frontier model needs
+- `prompt` (required): The full, paste-ready prompt for the frontier model
+- `question` (optional): Short summary for display/tracking in the widget
 - `target_model` (optional): Model ID. Default: `gpt-5.4`. Configured in `~/.ask-agi/config.json`
-- `output_format` (optional): `prose` | `code` | `structured` | `diff`
-- `reasoning_depth` (optional): `standard` | `deep` | `exhaustive`
-- `prompt` (optional*): Advanced override — skip compilation and send this exact prompt
-
-\* Either `question` or `prompt` is required.
+- `channel` (optional): `telegram` | `auto`
 
 ## When to use it
 

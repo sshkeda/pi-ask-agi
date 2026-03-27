@@ -3,16 +3,15 @@
 ## Architecture
 
 ```
-Pi model ──compile──► ask_agi ──send──► Telegram ──reply──► Pi inject
-  (foreground)                    (background)          (follow-up)
+Pi model ──compile prompt──► ask_agi ──send──► Telegram ──reply──► Pi inject
+  (orchestrator)              (delivery)   (background)         (follow-up)
 ```
 
 ## Constraints
 
 - No frontier API calls — the human is the transport layer
-- Prompt construction happens in the foreground (blocking)
+- The orchestrator (Pi model) compiles the prompt — ask_agi is a pure delivery tool
 - Telegram delivery and reply waiting happen in the background (non-blocking)
-- Official provider prompting guides are the source of truth for prompt formatting
 - Configurable model registry with user-defined defaults
 
 ## Telegram transport
@@ -25,10 +24,10 @@ Pi model ──compile──► ask_agi ──send──► Telegram ──reply
 
 ## Prompt compilation
 
-The current Pi model compiles the frontier prompt by:
-1. Fetching the target model's official prompting guide (live URL)
-2. Building a compiler input with the question, context, output format, and reasoning depth
-3. Calling the current model with a system prompt that instructs it to follow the guide
+The orchestrator (the Pi model calling the tool) compiles the prompt itself before
+calling ask_agi. This avoids any dependency on API keys within the extension — the
+orchestrator already has working auth. The compiled prompt is passed via the `prompt`
+parameter and sent to Telegram as-is.
 
 ## Response injection
 
