@@ -56,15 +56,13 @@ export function getTelegramConfig(): TelegramConfig | null {
 
 const API = (token: string) => `https://api.telegram.org/bot${token}`;
 const FILE_API = (token: string, filePath: string) => `https://api.telegram.org/file/bot${token}/${filePath}`;
-const MAX_TEXT_MESSAGE = 4000;
-const ATTACHMENT_CAPTION =
-  "🧠 ask-agi prompt attached. Paste it into the frontier model, then reply directly to this file with the response.";
 const dispatchers = new Map<string, TelegramDispatcher>();
 
 /**
  * Send a prompt delivery.
- * - Short prompts go as a single Telegram text message with the header prepended.
- * - Long prompts send the header as a separate text message, and the attachment contains ONLY the raw prompt.
+ * Always sends the prompt as a .txt file attachment so it's easy to
+ * copy-paste into any frontier model UI. The header goes as a
+ * separate text message before the file.
  */
 export async function sendMessage(
   config: TelegramConfig,
@@ -72,12 +70,6 @@ export async function sendMessage(
   header?: string,
 ): Promise<number | null> {
   const trimmedHeader = header?.trim();
-
-  if (prompt.length <= MAX_TEXT_MESSAGE) {
-    const text = trimmedHeader ? `${trimmedHeader}\n\n${prompt}` : prompt;
-    return await sendTextMessage(config, text);
-  }
-
   if (trimmedHeader) {
     await sendTextMessage(config, trimmedHeader);
   }
@@ -105,7 +97,7 @@ async function sendTextAttachment(
 ): Promise<number | null> {
   const form = new FormData();
   form.set("chat_id", config.chatId);
-  form.set("caption", ATTACHMENT_CAPTION);
+  form.set("caption", "🧠 ask-agi prompt. Paste into the frontier model, then reply to this file with the response.");
   form.set(
     "document",
     new Blob([text], { type: "text/plain;charset=utf-8" }),
