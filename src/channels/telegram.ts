@@ -251,16 +251,32 @@ async function downloadDocumentText(
   config: TelegramConfig,
   fileId: string,
 ): Promise<string | null> {
-  const fileInfoResp = await fetch(`${API(config.botToken)}/getFile?file_id=${encodeURIComponent(fileId)}`);
-  if (!fileInfoResp.ok) return null;
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const fileInfoResp = await fetch(
+        `${API(config.botToken)}/getFile?file_id=${encodeURIComponent(fileId)}`,
+        { signal: AbortSignal.timeout(15_000) },
+      );
+      if (!fileInfoResp.ok) return null;
 
-  const fileInfo = await readJson(fileInfoResp);
-  const filePath = getNestedString(fileInfo, ["result", "file_path"]);
-  if (!filePath) return null;
+      const fileInfo = await readJson(fileInfoResp);
+      const filePath = getNestedString(fileInfo, ["result", "file_path"]);
+      if (!filePath) return null;
 
-  const fileResp = await fetch(FILE_API(config.botToken, filePath));
-  if (!fileResp.ok) return null;
-  return await fileResp.text();
+      const fileResp = await fetch(FILE_API(config.botToken, filePath), {
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!fileResp.ok) return null;
+      return await fileResp.text();
+    } catch (err) {
+      lastErr = err;
+      console.error(`ask-agi document download attempt ${attempt + 1}/3 failed:`, err);
+      await sleep(1000 * (attempt + 1));
+    }
+  }
+  console.error("ask-agi document download failed after 3 retries — reply may be lost");
+  return null;
 }
 
 function getUpdates(value: unknown): TelegramUpdate[] {
