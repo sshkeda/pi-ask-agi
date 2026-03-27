@@ -40,10 +40,13 @@ interface TelegramUpdate {
 
 type Listener = (message: TelegramMessage) => void | Promise<void>;
 
+type DeathCallback = () => void;
+
 interface TelegramDispatcher {
   config: TelegramConfig;
   offset: number;
   listeners: Set<Listener>;
+  onPollingDead: Set<DeathCallback>;
   polling: boolean;
 }
 
@@ -161,6 +164,10 @@ export async function waitForReply(
       }
     };
 
+    // If polling dies fatally (auth error, webhook conflict), resolve null
+    // so the caller isn't stuck forever.
+    const onDead = (): void => finish(null);
+    dispatcher.onPollingDead.add(onDead);
     dispatcher.listeners.add(listener);
   });
 }
@@ -174,6 +181,7 @@ function getDispatcher(config: TelegramConfig): TelegramDispatcher {
     config,
     offset: 0,
     listeners: new Set(),
+    onPollingDead: new Set(),
     polling: false,
   };
   dispatchers.set(key, created);
@@ -259,6 +267,10 @@ function startPolling(dispatcher: TelegramDispatcher): void {
         await sleep(delay);
       }
     }
+
+    // Polling loop exited — notify any waiters still listening.
+    for (const cb of [...dispatcher.onPollingDead]) cb();
+    dispatcher.onPollingDead.clear();
   })();
 }
 
