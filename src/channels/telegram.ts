@@ -203,10 +203,17 @@ function startPolling(dispatcher: TelegramDispatcher): void {
           { signal: AbortSignal.timeout(35_000) },
         );
         if (!resp.ok) {
-          if (resp.status === 401 || resp.status === 403) {
-            console.error(`ask-agi Telegram polling: HTTP ${resp.status} — bad bot token, stopping`);
+          if (resp.status === 401 || resp.status === 403 || resp.status === 409) {
+            console.error(`ask-agi Telegram polling: HTTP ${resp.status} — ${resp.status === 409 ? "webhook conflict" : "bad bot token"}, stopping`);
             dispatcher.polling = false;
             break;
+          }
+          if (resp.status === 429) {
+            const body = await readJson(resp).catch(() => null);
+            const retryAfter = getNestedNumber(body, ["parameters", "retry_after"]) ?? 30;
+            console.error(`ask-agi Telegram polling: rate limited, waiting ${retryAfter}s`);
+            await sleep(retryAfter * 1000);
+            continue;
           }
           consecutiveErrors++;
           const delay = Math.min(BASE_RETRY_MS * 2 ** (consecutiveErrors - 1), MAX_RETRY_MS);
