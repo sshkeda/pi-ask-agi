@@ -405,6 +405,487 @@ describe("polling — error handling", () => {
   }, 15_000);
 });
 
+describe("edge cases — concurrent waiters", () => {
+  it("two waiters on different messages each get their own reply", async () => {
+    let pollCount = 0;
+
+    setHandler((req, res) => {
+      const url = parseUrl(req);
+      if (!url.pathname.includes("/getUpdates")) return;
+
+      pollCount++;
+      if (pollCount === 1) {
+        // Reply to message 100
+        jsonResponse(res, {
+          ok: true,
+          result: [
+            {
+              update_id: 1,
+              message: {
+                message_id: 300,
+                chat: { id: 123 },
+                text: "Reply A",
+                reply_to_message: { message_id: 100 },
+              },
+            },
+          ],
+        });
+      } else if (pollCount === 2) {
+        // Reply to message 200
+        jsonResponse(res, {
+          ok: true,
+          result: [
+            {
+              update_id: 2,
+              message: {
+                message_id: 301,
+                chat: { id: 123 },
+                text: "Reply B",
+                reply_to_message: { message_id: 200 },
+              },
+            },
+          ],
+        });
+      } else {
+        jsonResponse(res, { ok: true, result: [] });
+      }
+    });
+
+    const [replyA, replyB] = await Promise.all([
+      waitForReply(config, 100),
+      waitForReply(config, 200),
+    ]);
+    expect(replyA).toBe("Reply A");
+    expect(replyB).toBe("Reply B");
+  });
+
+  it("one waiter resolves, the other keeps waiting", async () => {
+    let pollCount = 0;
+    const ac = new AbortController();
+
+    setHandler((req, res) => {
+      const url = parseUrl(req);
+      if (!url.pathname.includes("/getUpdates")) return;
+
+      pollCount++;
+      if (pollCount === 1) {
+        // Only reply to message 100
+        jsonResponse(res, {
+          ok: true,
+          result: [
+            {
+              update_id: 1,
+              message: {
+                message_id: 300,
+                chat: { id: 123 },
+                text: "Only A",
+                reply_to_message: { message_id: 100 },
+              },
+            },
+          ],
+        });
+      } else {
+        jsonResponse(res, { ok: true, result: [] });
+      }
+    });
+
+    // Waiter B will never get a reply — abort it after 500ms
+    setTimeout(() => ac.abort(), 500);
+
+    const [replyA, replyB] = await Promise.all([
+      waitForReply(config, 100),
+      waitForReply(config, 200, ac.signal),
+    ]);
+    expect(replyA).toBe("Only A");
+    expect(replyB).toBeNull();
+  });
+});
+
+describe("edge cases — message filtering", () => {
+  it("ignores messages from wrong chat ID", async () => {
+    let pollCount = 0;
+
+    setHandler((req, res) => {
+      const url = parseUrl(req);
+      if (!url.pathname.includes("/getUpdates")) return;
+
+      pollCount++;
+      if (pollCount === 1) {
+        jsonResponse(res, {
+          ok: true,
+          result: [
+            {
+              update_id: 1,
+              message: {
+                message_id: 300,
+                chat: { id: 999 }, // wrong chat
+                text: "Wrong chat",
+                reply_to_message: { message_id: 100 },
+              },
+            },
+          ],
+        });
+      } else if (pollCount === 2) {
+        jsonResponse(res, {
+          ok: true,
+          result: [
+            {
+              update_id: 2,
+              message: {
+                message_id: 301,
+                chat: { id: 123 }, // right chat
+                text: "Right chat",
+                reply_to_message: { message_id: 100 },
+              },
+            },
+          ],
+        });
+      } else {
+        jsonResponse(res, { ok: true, result: [] });
+      }
+    });
+
+    const reply = await waitForReply(config, 100);
+    expect(reply).toBe("Right chat");
+  });
+
+  it("ignores whitespace-only text replies", async () => {
+    let pollCount = 0;
+
+    setHandler((req, res) => {
+      const url = parseUrl(req);
+      if (!url.pathname.includes("/getUpdates")) return;
+
+      pollCount++;
+      if (pollCount === 1) {
+        jsonResponse(res, {
+          ok: true,
+          result: [
+            {
+              update_id: 1,
+              message: {
+                message_id: 300,
+                chat: { id: 123 },
+                text: "   \n  ",
+                reply_to_message: { message_id: 100 },
+              },
+            },
+          ],
+        });
+      } else if (pollCount === 2) {
+        jsonResponse(res, {
+          ok: true,
+          result: [
+            {
+              update_id: 2,
+              message: {
+                message_id: 301,
+                chat: { id: 123 },
+                text: "Real response",
+                reply_to_message: { message_id: 100 },
+              },
+            },
+          ],
+        });
+      } else {
+        jsonResponse(res, { ok: true, result: [] });
+      }
+    });
+
+    const reply = await waitForReply(config, 100);
+    expect(reply).toBe("Real response");
+  });
+
+  it("ignores empty document files", async () => {
+    let pollCount = 0;
+
+    setHandler((req, res) => {
+      const url = parseUrl(req);
+
+      if (url.pathname.includes("/getUpdates")) {
+        pollCount++;
+        if (pollCount === 1) {
+          jsonResponse(res, {
+            ok: true,
+            result: [
+              {
+                update_id: 1,
+                message: {
+                  message_id: 300,
+                  chat: { id: 123 },
+                  document: { file_id: "empty-file" },
+                  reply_to_message: { message_id: 100 },
+                },
+              },
+            ],
+          });
+        } else if (pollCount === 2) {
+          jsonResponse(res, {
+            ok: true,
+            result: [
+              {
+                update_id: 2,
+                message: {
+                  message_id: 301,
+                  chat: { id: 123 },
+                  text: "Fallback text",
+                  reply_to_message: { message_id: 100 },
+                },
+              },
+            ],
+          });
+        } else {
+          jsonResponse(res, { ok: true, result: [] });
+        }
+        return;
+      }
+
+      if (url.pathname.includes("/getFile")) {
+        jsonResponse(res, { ok: true, result: { file_path: "docs/empty.txt" } });
+        return;
+      }
+
+      if (url.pathname.includes("/file/")) {
+        res.writeHead(200, { "Content-Type": "text/plain" });
+        res.end("   "); // whitespace only
+        return;
+      }
+    });
+
+    const reply = await waitForReply(config, 100);
+    expect(reply).toBe("Fallback text");
+  });
+
+  it("skips updates without a message field", async () => {
+    let pollCount = 0;
+
+    setHandler((req, res) => {
+      const url = parseUrl(req);
+      if (!url.pathname.includes("/getUpdates")) return;
+
+      pollCount++;
+      if (pollCount === 1) {
+        jsonResponse(res, {
+          ok: true,
+          result: [
+            { update_id: 1 }, // no message
+            { update_id: 2, message: null }, // null message
+            {
+              update_id: 3,
+              message: {
+                message_id: 300,
+                chat: { id: 123 },
+                text: "Valid",
+                reply_to_message: { message_id: 100 },
+              },
+            },
+          ],
+        });
+      } else {
+        jsonResponse(res, { ok: true, result: [] });
+      }
+    });
+
+    const reply = await waitForReply(config, 100);
+    expect(reply).toBe("Valid");
+  });
+
+  it("handles multiple updates in a single poll response", async () => {
+    let pollCount = 0;
+
+    setHandler((req, res) => {
+      const url = parseUrl(req);
+      if (!url.pathname.includes("/getUpdates")) return;
+
+      pollCount++;
+      if (pollCount === 1) {
+        jsonResponse(res, {
+          ok: true,
+          result: [
+            {
+              update_id: 1,
+              message: {
+                message_id: 300,
+                chat: { id: 123 },
+                text: "Irrelevant",
+                reply_to_message: { message_id: 999 },
+              },
+            },
+            {
+              update_id: 2,
+              message: {
+                message_id: 301,
+                chat: { id: 123 },
+                text: "The one we want",
+                reply_to_message: { message_id: 100 },
+              },
+            },
+            {
+              update_id: 3,
+              message: {
+                message_id: 302,
+                chat: { id: 123 },
+                text: "After the match",
+                reply_to_message: { message_id: 100 },
+              },
+            },
+          ],
+        });
+      } else {
+        jsonResponse(res, { ok: true, result: [] });
+      }
+    });
+
+    const reply = await waitForReply(config, 100);
+    expect(reply).toBe("The one we want");
+  });
+});
+
+describe("edge cases — polling lifecycle", () => {
+  it("restarts polling after all listeners gone and new waiter arrives", async () => {
+    let pollCount = 0;
+
+    setHandler((req, res) => {
+      const url = parseUrl(req);
+      if (!url.pathname.includes("/getUpdates")) return;
+
+      pollCount++;
+      if (pollCount === 1) {
+        jsonResponse(res, {
+          ok: true,
+          result: [
+            {
+              update_id: 1,
+              message: {
+                message_id: 300,
+                chat: { id: 123 },
+                text: "First round",
+                reply_to_message: { message_id: 100 },
+              },
+            },
+          ],
+        });
+      } else if (pollCount >= 3) {
+        // After restart, eventually return a reply
+        jsonResponse(res, {
+          ok: true,
+          result: [
+            {
+              update_id: 2,
+              message: {
+                message_id: 301,
+                chat: { id: 123 },
+                text: "Second round",
+                reply_to_message: { message_id: 200 },
+              },
+            },
+          ],
+        });
+      } else {
+        jsonResponse(res, { ok: true, result: [] });
+      }
+    });
+
+    // First waiter — polling starts, resolves, polling stops (no listeners)
+    const reply1 = await waitForReply(config, 100);
+    expect(reply1).toBe("First round");
+
+    // Wait a tick for the no-listeners check to stop polling
+    await new Promise((r) => setTimeout(r, 100));
+
+    // Second waiter — polling should restart
+    const reply2 = await waitForReply(config, 200);
+    expect(reply2).toBe("Second round");
+  });
+
+  it("malformed JSON triggers backoff, then recovers", async () => {
+    let requestCount = 0;
+    const timestamps: number[] = [];
+
+    setHandler((req, res) => {
+      const url = parseUrl(req);
+      if (!url.pathname.includes("/getUpdates")) return;
+
+      requestCount++;
+      timestamps.push(Date.now());
+
+      if (requestCount === 1) {
+        // Return invalid JSON with 200 status
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end("this is not json<html>502 bad gateway</html>");
+        return;
+      }
+
+      jsonResponse(res, {
+        ok: true,
+        result: [
+          {
+            update_id: 1,
+            message: {
+              message_id: 300,
+              chat: { id: 123 },
+              text: "Recovered",
+              reply_to_message: { message_id: 100 },
+            },
+          },
+        ],
+      });
+    });
+
+    const reply = await waitForReply(config, 100);
+    expect(reply).toBe("Recovered");
+    expect(requestCount).toBe(2);
+    // Should have backed off ~2s (first error)
+    const gap = timestamps[1]! - timestamps[0]!;
+    expect(gap).toBeGreaterThanOrEqual(1800);
+  }, 10_000);
+
+  it("document download exhausts all retries — waiter is not stuck forever", async () => {
+    let pollCount = 0;
+    const ac = new AbortController();
+
+    setHandler((req, res) => {
+      const url = parseUrl(req);
+
+      if (url.pathname.includes("/getUpdates")) {
+        pollCount++;
+        if (pollCount === 1) {
+          jsonResponse(res, {
+            ok: true,
+            result: [
+              {
+                update_id: 1,
+                message: {
+                  message_id: 300,
+                  chat: { id: 123 },
+                  document: { file_id: "doomed-file" },
+                  reply_to_message: { message_id: 100 },
+                },
+              },
+            ],
+          });
+        } else {
+          jsonResponse(res, { ok: true, result: [] });
+        }
+        return;
+      }
+
+      if (url.pathname.includes("/getFile")) {
+        // Always fail
+        res.destroy();
+        return;
+      }
+    });
+
+    // The download will fail 3x, reply is lost.
+    // Abort after 15s so the test doesn't hang forever — this verifies
+    // the waiter doesn't resolve with the lost reply.
+    setTimeout(() => ac.abort(), 12_000);
+    const reply = await waitForReply(config, 100, ac.signal);
+    expect(reply).toBeNull();
+  }, 20_000);
+});
+
 describe("polling — abort signal", () => {
   it("resolves null when signal is aborted", async () => {
     const ac = new AbortController();
