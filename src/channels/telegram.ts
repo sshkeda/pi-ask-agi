@@ -56,6 +56,13 @@ export function getTelegramConfig(): TelegramConfig | null {
 
 const API = (token: string) => `https://api.telegram.org/bot${token}`;
 const FILE_API = (token: string, filePath: string) => `https://api.telegram.org/file/bot${token}/${filePath}`;
+// Generation counter — bumped on every module load (including /reload).
+// Old polling loops detect the mismatch and exit, preventing
+// two loops from competing for getUpdates on the same bot.
+const GEN_KEY = "__askAgiPollGeneration";
+(globalThis as any)[GEN_KEY] = ((globalThis as any)[GEN_KEY] || 0) + 1;
+const currentGeneration: number = (globalThis as any)[GEN_KEY];
+
 const dispatchers = new Map<string, TelegramDispatcher>();
 
 /**
@@ -178,7 +185,7 @@ function startPolling(dispatcher: TelegramDispatcher): void {
   dispatcher.polling = true;
 
   void (async () => {
-    while (dispatcher.polling) {
+    while (dispatcher.polling && (globalThis as any)[GEN_KEY] === currentGeneration) {
       try {
         const resp = await fetch(
           `${API(dispatcher.config.botToken)}/getUpdates?offset=${dispatcher.offset}&timeout=30&allowed_updates=["message"]`,
