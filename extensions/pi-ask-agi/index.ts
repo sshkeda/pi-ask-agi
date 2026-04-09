@@ -1,5 +1,5 @@
 /**
- * ask-agi — Human-as-API for frontier models.
+ * pi-ask-agi — Human-as-API for frontier models.
  *
  * Final UX model:
  * - foreground: current Pi model compiles the prompt
@@ -60,10 +60,10 @@ function requestSummary(request: PendingRequest): string {
 function refreshWidget(ctx: ExtensionContext | ExtensionCommandContext): void {
   const pending = activeRequests();
   if (pending.length === 0) {
-    ctx.ui.setWidget("ask-agi", undefined);
+    ctx.ui.setWidget("pi-ask-agi", undefined);
     return;
   }
-  ctx.ui.setWidget("ask-agi", pending.slice(0, 6).map(requestSummary));
+  ctx.ui.setWidget("pi-ask-agi", pending.slice(0, 6).map(requestSummary));
 }
 
 function queueFrontierResponse(
@@ -72,7 +72,7 @@ function queueFrontierResponse(
   response: string,
 ): void {
   const content = [
-    `Frontier response received for ask_agi request ${request.id}.`,
+    `Frontier response received for pi_ask_agi request ${request.id}.`,
     `Model: ${request.model.name}`,
     request.question ? `Original question: ${request.question}` : undefined,
     `Frontier response:\n${response}`,
@@ -91,7 +91,7 @@ async function startTelegramFlow(pi: ExtensionAPI, request: PendingRequest): Pro
 
     const sending = markRequest(request, { status: "sending" });
 
-    const caption = `🧠 ask-agi → ${sending.model.name} (${sending.id})\nPaste into ${sending.model.name}, then reply to this message with the response.`;
+    const caption = `🧠 pi-ask-agi → ${sending.model.name} (${sending.id})\nPaste into ${sending.model.name}, then reply to this message with the response.`;
 
     const messageId = await sendTelegram(telegramConfig, sending.prompt, caption);
     if (!messageId) throw new Error("Failed to send Telegram message.");
@@ -105,7 +105,7 @@ async function startTelegramFlow(pi: ExtensionAPI, request: PendingRequest): Pro
     }
 
     const done = markRequest(request, { status: "completed" });
-    pi.appendEntry("ask-agi-result", {
+    pi.appendEntry("pi-ask-agi-result", {
       requestId: done.id,
       targetModel: done.model.id,
       question: done.question,
@@ -125,12 +125,12 @@ export default function (pi: ExtensionAPI) {
   const defaultModel = getDefaultModel(config);
   const modelIds = getModelIds(config);
 
-  pi.registerCommand("ask-agi-status", {
-    description: "Show active ask-agi requests",
+  pi.registerCommand("pi-ask-agi-status", {
+    description: "Show active pi-ask-agi requests",
     handler: async (_args, ctx) => {
       const pending = activeRequests();
       if (pending.length === 0) {
-        ctx.ui.notify("No active ask-agi requests.", "info");
+        ctx.ui.notify("No active pi-ask-agi requests.", "info");
       } else {
         ctx.ui.notify(pending.map(requestSummary).join("\n"), "info");
       }
@@ -139,17 +139,17 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.registerTool({
-    name: "ask_agi",
+    name: "pi_ask_agi",
     label: "Ask AGI",
     description:
-      "Escalate a hard problem to a frontier model through Telegram. You compile the prompt, ask_agi delivers it via Telegram, and injects the reply back into Pi later.",
+      "Escalate a hard problem to a frontier model through Telegram. You compile the prompt, pi_ask_agi delivers it via Telegram, and injects the reply back into Pi later.",
     promptSnippet:
-      "Escalate hard problems with ask_agi. You compile the full paste-ready prompt yourself, then pass it to ask_agi for Telegram delivery.",
+      "Escalate hard problems with pi_ask_agi. You compile the full paste-ready prompt yourself, then pass it to pi_ask_agi for Telegram delivery.",
     promptGuidelines: [
       `Target model: ${defaultModel.name}. Prompting guide: ${defaultModel.guideUrl}`,
-      "YOU are the prompt compiler. Before calling ask_agi, fetch the prompting guide above with fetch_page, then write a prompt that follows it.",
+      "YOU are the prompt compiler. Before calling pi_ask_agi, fetch the prompting guide above with fetch_page, then write a prompt that follows it.",
       "The frontier model has ZERO access to this Pi session, files, tools, or hidden context. Include everything it needs in the prompt.",
-      "ask_agi is a pure delivery mechanism — it sends your prompt as a .txt file to Telegram and injects the reply back later.",
+      "pi_ask_agi is a pure delivery mechanism — it sends your prompt as a .txt file to Telegram and injects the reply back later.",
       "Include a short `question` for display/tracking purposes (shown in the widget and logs).",
     ],
     parameters: Type.Object({
@@ -172,21 +172,21 @@ export default function (pi: ExtensionAPI) {
 
       if (!getTelegramConfig()) {
         return {
-          content: [{ type: "text", text: "ask_agi requires ASK_AGI_TELEGRAM_BOT_TOKEN and ASK_AGI_TELEGRAM_CHAT_ID." }],
+          content: [{ type: "text", text: "pi_ask_agi requires PI_ASK_AGI_TELEGRAM_BOT_TOKEN and PI_ASK_AGI_TELEGRAM_CHAT_ID." }],
           details: { status: "error" },
         };
       }
 
       if (!params.prompt?.trim()) {
         return {
-          content: [{ type: "text", text: "ask_agi requires a compiled prompt. You must write the full prompt yourself and pass it as the `prompt` parameter." }],
+          content: [{ type: "text", text: "pi_ask_agi requires a compiled prompt. You must write the full prompt yourself and pass it as the `prompt` parameter." }],
           details: { status: "error" },
         };
       }
 
       if (params.channel && !["telegram", "auto"].includes(params.channel)) {
         return {
-          content: [{ type: "text", text: "ask_agi currently supports only telegram/auto background delivery." }],
+          content: [{ type: "text", text: "pi_ask_agi currently supports only telegram/auto background delivery." }],
           details: { status: "error" },
         };
       }
@@ -217,7 +217,7 @@ export default function (pi: ExtensionAPI) {
         return {
           content: [{
             type: "text",
-            text: `Started ask_agi request ${requestId} for ${model.name}. Sending to Telegram in the background. The frontier reply will be injected back when it arrives.`,
+            text: `Started pi_ask_agi request ${requestId} for ${model.name}. Sending to Telegram in the background. The frontier reply will be injected back when it arrives.`,
           }],
           details: { requestId, targetModel: model.id, status: "sending", channel: "telegram" },
         };
@@ -226,7 +226,7 @@ export default function (pi: ExtensionAPI) {
         markRequest(request, { status: "error", error: message });
         refreshWidget(ctx);
         return {
-          content: [{ type: "text", text: `ask_agi failed: ${message}` }],
+          content: [{ type: "text", text: `pi_ask_agi failed: ${message}` }],
           details: { requestId, targetModel: model.id, status: "error", channel: "telegram" },
         };
       }
@@ -234,7 +234,7 @@ export default function (pi: ExtensionAPI) {
 
     renderCall(args, theme) {
       const target = String(args.target_model || defaultModel.id);
-      let text = theme.fg("toolTitle", theme.bold("ask_agi ")) + theme.fg("accent", `→ ${target}`);
+      let text = theme.fg("toolTitle", theme.bold("pi_ask_agi ")) + theme.fg("accent", `→ ${target}`);
       const preview = String(args.question || args.prompt || "").slice(0, 100).replace(/\n/g, " ");
       if (preview) text += `\n  ${theme.fg("muted", preview)}`;
       return new Text(text, 0, 0);

@@ -1,4 +1,4 @@
-# ask-agi
+# pi-ask-agi
 
 Escalate hard problems to frontier models through Telegram. You are the API layer.
 
@@ -7,7 +7,7 @@ The current Pi model compiles an optimal prompt in the foreground, sends it to T
 ## Install
 
 ```bash
-pi install git+https://github.com/sshkeda/ask-agi.git
+pi install git+https://github.com/sshkeda/pi-ask-agi.git
 ```
 
 ## Setup
@@ -25,8 +25,8 @@ pi install git+https://github.com/sshkeda/ask-agi.git
 ### 3. Set environment variables
 
 ```bash
-export ASK_AGI_TELEGRAM_BOT_TOKEN="your-bot-token"
-export ASK_AGI_TELEGRAM_CHAT_ID="your-chat-id"
+export PI_ASK_AGI_TELEGRAM_BOT_TOKEN="your-bot-token"
+export PI_ASK_AGI_TELEGRAM_CHAT_ID="your-chat-id"
 ```
 
 Add these to your shell config (e.g. `~/.zshrc`) so they persist.
@@ -37,7 +37,7 @@ Open your bot in Telegram and press **Start** (or send any message).
 
 ## Usage
 
-The Pi model calls `ask_agi` when it decides escalation would help:
+The Pi model calls `pi_ask_agi` when it decides escalation would help:
 
 ```
 question: "What to ask the frontier model"
@@ -57,7 +57,7 @@ context:  "All relevant code, errors, constraints"
 
 | Command | Description |
 |---------|-------------|
-| `/ask-agi-status` | Show active requests |
+| `/pi-ask-agi-status` | Show active requests |
 
 ### Parameters
 
@@ -74,7 +74,7 @@ context:  "All relevant code, errors, constraints"
 
 ## Configuration
 
-Models are configured in `~/.ask-agi/config.json` (auto-created on first run):
+Models are configured in `~/.pi-ask-agi/config.json` (auto-created on first run):
 
 ```json
 {
