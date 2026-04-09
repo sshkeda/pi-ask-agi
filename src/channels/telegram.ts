@@ -4,7 +4,7 @@
  * Sends the compiled prompt via Telegram bot, waits for
  * the user to reply with the frontier model's response.
  *
- * Env vars: ASK_AGI_TELEGRAM_BOT_TOKEN, ASK_AGI_TELEGRAM_CHAT_ID
+ * Env vars: PI_ASK_AGI_TELEGRAM_BOT_TOKEN, PI_ASK_AGI_TELEGRAM_CHAT_ID
  */
 
 export interface TelegramConfig {
@@ -51,19 +51,19 @@ interface TelegramDispatcher {
 }
 
 export function getTelegramConfig(): TelegramConfig | null {
-  const botToken = process.env.ASK_AGI_TELEGRAM_BOT_TOKEN;
-  const chatId = process.env.ASK_AGI_TELEGRAM_CHAT_ID;
+  const botToken = process.env.PI_ASK_AGI_TELEGRAM_BOT_TOKEN;
+  const chatId = process.env.PI_ASK_AGI_TELEGRAM_CHAT_ID;
   if (!botToken || !chatId) return null;
   return { botToken, chatId };
 }
 
-const baseUrl = () => process.env.__ASK_AGI_TELEGRAM_BASE_URL || "https://api.telegram.org";
+const baseUrl = () => process.env.__PI_ASK_AGI_TELEGRAM_BASE_URL || "https://api.telegram.org";
 const API = (token: string) => `${baseUrl()}/bot${token}`;
 const FILE_API = (token: string, filePath: string) => `${baseUrl()}/file/bot${token}/${filePath}`;
 // Generation counter — bumped on every module load (including /reload).
 // Old polling loops detect the mismatch and exit, preventing
 // two loops from competing for getUpdates on the same bot.
-const GEN_KEY = "__askAgiPollGeneration";
+const GEN_KEY = "__piAskAgiPollGeneration";
 (globalThis as any)[GEN_KEY] = ((globalThis as any)[GEN_KEY] || 0) + 1;
 const currentGeneration: number = (globalThis as any)[GEN_KEY];
 
@@ -89,11 +89,11 @@ async function sendTextAttachment(
 ): Promise<number | null> {
   const form = new FormData();
   form.set("chat_id", config.chatId);
-  form.set("caption", caption || "🧠 ask-agi prompt. Reply to this message with the response.");
+  form.set("caption", caption || "🧠 pi-ask-agi prompt. Reply to this message with the response.");
   form.set(
     "document",
     new Blob([text], { type: "text/plain;charset=utf-8" }),
-    `ask-agi-${Date.now()}.txt`,
+    `pi-ask-agi-${Date.now()}.txt`,
   );
 
   const resp = await fetch(`${API(config.botToken)}/sendDocument`, {
@@ -112,7 +112,7 @@ async function sendTextAttachment(
  * No automatic timeout: this workflow is human-mediated and may take hours.
  * The request only stops if the signal is aborted.
  *
- * To avoid cross-talk between multiple ask-agi requests, a single shared
+ * To avoid cross-talk between multiple pi-ask-agi requests, a single shared
  * getUpdates loop fans out messages to per-request listeners. Replies must be
  * explicit Telegram replies to the original prompt message/file.
  */
@@ -214,20 +214,20 @@ function startPolling(dispatcher: TelegramDispatcher): void {
         );
         if (!resp.ok) {
           if (resp.status === 401 || resp.status === 403 || resp.status === 409) {
-            console.error(`ask-agi Telegram polling: HTTP ${resp.status} — ${resp.status === 409 ? "webhook conflict" : "bad bot token"}, stopping`);
+            console.error(`pi-ask-agi Telegram polling: HTTP ${resp.status} — ${resp.status === 409 ? "webhook conflict" : "bad bot token"}, stopping`);
             dispatcher.polling = false;
             break;
           }
           if (resp.status === 429) {
             const body = await readJson(resp).catch(() => null);
             const retryAfter = getNestedNumber(body, ["parameters", "retry_after"]) ?? 30;
-            console.error(`ask-agi Telegram polling: rate limited, waiting ${retryAfter}s`);
+            console.error(`pi-ask-agi Telegram polling: rate limited, waiting ${retryAfter}s`);
             await sleep(retryAfter * 1000);
             continue;
           }
           consecutiveErrors++;
           const delay = Math.min(BASE_RETRY_MS * 2 ** (consecutiveErrors - 1), MAX_RETRY_MS);
-          console.error(`ask-agi Telegram polling HTTP ${resp.status}, retrying in ${Math.round(delay / 1000)}s`);
+          console.error(`pi-ask-agi Telegram polling HTTP ${resp.status}, retrying in ${Math.round(delay / 1000)}s`);
           await sleep(delay);
           continue;
         }
@@ -244,7 +244,7 @@ function startPolling(dispatcher: TelegramDispatcher): void {
             try {
               await listener(update.message);
             } catch (error) {
-              console.error("ask-agi Telegram listener failed:", error);
+              console.error("pi-ask-agi Telegram listener failed:", error);
             }
           }
         }
@@ -261,9 +261,9 @@ function startPolling(dispatcher: TelegramDispatcher): void {
 
         if (isTransientNetworkError(error)) {
           const cause = error instanceof Error && error.cause instanceof Error ? (error.cause as any).code || error.cause.message : "";
-          console.error(`ask-agi Telegram polling: network error${cause ? ` (${cause})` : ""}, retrying in ${Math.round(delay / 1000)}s (attempt ${consecutiveErrors})`);
+          console.error(`pi-ask-agi Telegram polling: network error${cause ? ` (${cause})` : ""}, retrying in ${Math.round(delay / 1000)}s (attempt ${consecutiveErrors})`);
         } else {
-          console.error("ask-agi Telegram polling failed:", error);
+          console.error("pi-ask-agi Telegram polling failed:", error);
         }
 
         await sleep(delay);
@@ -300,11 +300,11 @@ async function downloadDocumentText(
       return await fileResp.text();
     } catch (err) {
       lastErr = err;
-      console.error(`ask-agi document download attempt ${attempt + 1}/3 failed:`, err);
+      console.error(`pi-ask-agi document download attempt ${attempt + 1}/3 failed:`, err);
       await sleep(1000 * (attempt + 1));
     }
   }
-  console.error("ask-agi document download failed after 3 retries — reply may be lost");
+  console.error("pi-ask-agi document download failed after 3 retries — reply may be lost");
   return null;
 }
 

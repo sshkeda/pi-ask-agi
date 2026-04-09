@@ -20,7 +20,7 @@ export interface Config {
   models: ModelConfig[];
 }
 
-const CONFIG_DIR = path.join(os.homedir(), ".ask-agi");
+const CONFIG_DIR = path.join(os.homedir(), ".pi-ask-agi");
 const CONFIG_PATH = path.join(CONFIG_DIR, "config.json");
 
 const DEFAULT_CONFIG: Config = {

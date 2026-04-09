@@ -32,11 +32,11 @@ beforeAll(async () => {
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const addr = server.address() as { port: number };
   baseUrl = `http://127.0.0.1:${addr.port}`;
-  process.env.__ASK_AGI_TELEGRAM_BASE_URL = baseUrl;
+  process.env.__PI_ASK_AGI_TELEGRAM_BASE_URL = baseUrl;
 });
 
 afterAll(async () => {
-  delete process.env.__ASK_AGI_TELEGRAM_BASE_URL;
+  delete process.env.__PI_ASK_AGI_TELEGRAM_BASE_URL;
   await new Promise<void>((resolve) => server.close(() => resolve()));
 });
 
