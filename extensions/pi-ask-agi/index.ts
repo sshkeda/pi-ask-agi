@@ -219,7 +219,7 @@ export default function (pi: ExtensionAPI) {
             type: "text",
             text: `Started pi_ask_agi request ${requestId} for ${model.name}. Sending to Telegram in the background. The frontier reply will be injected back when it arrives.`,
           }],
-          details: { requestId, targetModel: model.id, status: "sending", channel: "telegram" },
+          details: { requestId, targetModel: model.id, status: "sending", channel: "telegram", async: true, deferred: true },
         };
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
